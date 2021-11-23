@@ -68,6 +68,7 @@ getval(P)->
 fib(N)->
     register(cache, spawn(fun() -> cache([]) end)),
     pfib(0).
+
 cache(L)->
     receive
         % {new,S} when not lists:member(S, L)->cache(S++L) ;
