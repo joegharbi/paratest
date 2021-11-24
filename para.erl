@@ -1,5 +1,5 @@
 -module(para).
--export([bucket_sort/1,pany/2,multi/3,pfib/1]).
+-export([bucket_sort/1,pany/2,multi/3,fib/1]).
 
 pany(F,List)->
     MainPid=self(),
@@ -55,25 +55,36 @@ spowner(_, [], [])->
     [];
 spowner(F,L1,L2)->
     MainPid= self(),
-    [spawn(fun() -> MainPid ! {self(),F(hd(L1),hd(L2))} end)|spowner(F,tl(L1),tl(L2))].
+    [spawn_monitor(fun() -> MainPid ! {self(),F(hd(L1),hd(L2))} end)|spowner(F,tl(L1),tl(L2))].
 multi(F,L1,L2)->
-    Pids=spowner(F, L1, L2),
-    getval(Pids).
+    Pidsnref=spowner(F, L1, L2),
+    Pids=[element(1, P)||P<-Pidsnref],
+    getval (Pids).
 getval(P)->
     [receive
-        {Pid,Val}->Val
+        {Pid,Val}->Val;
+        {_,_,_,_,{Reason,_}} when Reason /=normal ->
+            {'EXIT',Reason}
     end|| Pid<-P].
+
 
 
 fib(N)->
     register(cache, spawn(fun() -> cache([]) end)),
-    pfib(0).
+    pfib(N).
 
 cache(L)->
     receive
-        % {new,S} when not lists:member(S, L)->cache(S++L) ;
-        {get,E}-> lists:search(E, L)
-end.
+        {to_add,S}->
+            case lists:member(S, L) of
+                false->
+                    cache([L|S]);
+                true->
+                    cache(L)
+            end;
+        {give_me,E,From}-> From ! {get_this,E,lists:keyfind(1,E, L)},
+        cache(L)
+    end.
 sfib(0) ->
     1;
 sfib(1) ->
@@ -85,12 +96,19 @@ pfib(0) -> 1;
 pfib(1) -> 1;
 pfib(N) ->
     Main = self(),
-    spawn(fun() -> Main ! sfib(N-1) end),
-    spawn(fun() -> Main ! sfib(N-2) end),
+    whereis(cache) ! {give_me,N,Main},
     receive
-        Val1 -> 
+        {get_this,_,false}->
+            spawn(fun() -> Main !sfib(N-1) end),
+            spawn(fun() -> Main ! sfib(N-2) end),
             receive
-                Val2 -> Val1+Val2
-            end
+                Val1 ->
+                    receive
+                        Val2 -> whereis(cache) ! {to_add,Val1+Val2},
+                        Val1+Val2
+                    end
+                end;
+            {get_this,_,V}->{_,S}=V,
+            S
     end.
 
