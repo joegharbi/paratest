@@ -78,12 +78,16 @@ cache(L)->
         {to_add,S}->
             case lists:member(S, L) of
                 false->
+                    io:format("inserting a new value~n"),
                     cache([L|S]);
                 true->
+                    io:format("not inserting a new value because already there~n"),
                     cache(L)
             end;
-        {give_me,E,From}-> From ! {get_this,E,lists:keyfind(1,E, L)},
-        cache(L)
+        {give_me,E,From}->
+            io:format("sending value~n"),
+            From ! {get_this,lists:keyfind(1,E, L)},
+            cache(L)
     end.
 sfib(0) ->
     1;
@@ -96,19 +100,23 @@ pfib(0) -> 1;
 pfib(1) -> 1;
 pfib(N) ->
     Main = self(),
+    io:format("asking value~n"),
     whereis(cache) ! {give_me,N,Main},
     receive
-        {get_this,_,false}->
+        {get_this,false}->
+            io:format("non existing value~n"),
             spawn(fun() -> Main !sfib(N-1) end),
             spawn(fun() -> Main ! sfib(N-2) end),
             receive
                 Val1 ->
                     receive
-                        Val2 -> whereis(cache) ! {to_add,Val1+Val2},
+                        Val2 -> whereis(cache) ! {to_add,N,Val1+Val2},
                         Val1+Val2
                     end
                 end;
-            {get_this,_,V}->{_,S}=V,
+        {get_this,V}->
+            {_,S}=V,
+            io:format("value existse~n"),
             S
     end.
 
