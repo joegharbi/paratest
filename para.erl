@@ -70,16 +70,26 @@ getval(P)->
 
 
 fib(N)->
-    register(cache, spawn(fun() -> cache([]) end)),
-    pfib(N).
+Cpid= spawn(fun() -> cache([]) end),
+pfib(N,Cpid).
+    % Cpid= spawn(fun() -> cache([]) end),
+    % case is_process_alive(Cpid) of
+    %     false->
+    %    ? true->
+            % pfib(N,Cpid).
+    % end.
 
 cache(L)->
     receive
         {to_add,S}->
-            case lists:member(S, L) of
+            io:format("List before we add value L= ~62p ~n",[L]),
+            {V,_}=S,
+            io:format("value to be added V= ~62p ~n",[V]),
+            case lists:keyfind(V,1, L) of
                 false->
-                    io:format("inserting a new value~n"),
-                    cache([L|S]);
+                    T=lists:append(L,S),
+                    io:format("inserting a new value T= ~62p ~n",[T]),
+                    cache(T);
                 true->
                     io:format("not inserting a new value because already there~n"),
                     cache(L)
@@ -96,27 +106,28 @@ sfib(1) ->
 sfib(N) -> 
     sfib(N-1) + sfib(N-2).
 
-pfib(0) -> 1;
-pfib(1) -> 1;
-pfib(N) ->
+pfib(0,_) -> 1;
+pfib(1,_) -> 1;
+pfib(N,C) ->
     Main = self(),
     io:format("asking value~n"),
-    whereis(cache) ! {give_me,N,Main},
+    C ! {give_me,N,Main},
     receive
         {get_this,false}->
-            io:format("non existing value~n"),
+            io:format("non existing value in cache~n"),
             spawn(fun() -> Main !sfib(N-1) end),
             spawn(fun() -> Main ! sfib(N-2) end),
             receive
                 Val1 ->
                     receive
-                        Val2 -> whereis(cache) ! {to_add,N,Val1+Val2},
-                        Val1+Val2
+                        Val2 -> E=Val1+Val2,
+                        C ! {to_add,{N,E}}
                     end
-                end;
+                end
+                ;
         {get_this,V}->
             {_,S}=V,
-            io:format("value existse~n"),
+            io:format("value existse in cache~n"),
             S
     end.
 
