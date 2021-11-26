@@ -22,17 +22,8 @@ bucket_sort([])->
     [];
 bucket_sort(List) when length(List)==1->
     List;
-% bucket_sort(List) when length(List)==2->
-%     if hd(List)<hd(tl(List))->
-%         List;
-%     true->
-%         lists:reverse(List)
-%     end;
 bucket_sort(List)->
     MainPid=self(),
-    % Bucket1=[E||E<-List,E<(lists:sum(List) div length(List))],
-    % Bucket2=[E||E<-List,E>=(lists:sum(List) div length(List))],
-    % using the div and the test for 2 elemts always create a deadlock similar to using the /.
     Bucket1=[E||E<-List,E<(lists:sum(List) / length(List))],
     Bucket2=[E||E<-List,E>=(lists:sum(List) / length(List))],
       
@@ -70,64 +61,47 @@ getval(P)->
 
 
 fib(N)->
-Cpid= spawn(fun() -> cache([]) end),
-pfib(N,Cpid).
-    % Cpid= spawn(fun() -> cache([]) end),
-    % case is_process_alive(Cpid) of
-    %     false->
-    %    ? true->
-            % pfib(N,Cpid).
-    % end.
+    C=whereis(cache),
+    if  C == undefined ->
+            register(cache,spawn(fun() -> cache([]) end)),
+            pfib(N);
+        true->
+            pfib(N) 
+    end.
 
 cache(L)->
     receive
         {to_add,S}->
-            io:format("List before we add value L= ~62p ~n",[L]),
-            {V,_}=S,
-            io:format("value to be added V= ~62p ~n",[V]),
-            case lists:keyfind(V,1, L) of
-                false->
-                    T=lists:append(L,S),
-                    io:format("inserting a new value T= ~62p ~n",[T]),
+            Find=lists:keyfind(S,1, L),
+            if Find ==false->
+                    T=lists:append(L,[S]),
                     cache(T);
                 true->
-                    io:format("not inserting a new value because already there~n"),
                     cache(L)
             end;
         {give_me,E,From}->
-            io:format("sending value~n"),
-            From ! {get_this,lists:keyfind(1,E, L)},
+            From ! {get_this,lists:keyfind(E,1, L)},
             cache(L)
     end.
-sfib(0) ->
-    1;
-sfib(1) ->
-    1;
-sfib(N) -> 
-    sfib(N-1) + sfib(N-2).
 
-pfib(0,_) -> 1;
-pfib(1,_) -> 1;
-pfib(N,C) ->
+pfib(0) -> 1;
+pfib(1) -> 1;
+pfib(N) ->
     Main = self(),
-    io:format("asking value~n"),
-    C ! {give_me,N,Main},
+    cache ! {give_me,N,Main},
     receive
         {get_this,false}->
-            io:format("non existing value in cache~n"),
-            spawn(fun() -> Main !sfib(N-1) end),
-            spawn(fun() -> Main ! sfib(N-2) end),
+            spawn(fun() -> Main ! pfib(N-1) end),
+            spawn(fun() -> Main ! pfib(N-2) end),
             receive
                 Val1 ->
                     receive
                         Val2 -> E=Val1+Val2,
-                        C ! {to_add,{N,E}}
+                        cache ! {to_add,{N,E}},
+                        E
                     end
-                end
-                ;
+                end;
         {get_this,V}->
             {_,S}=V,
-            io:format("value existse in cache~n"),
             S
     end.
-
